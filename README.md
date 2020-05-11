@@ -17,4 +17,4 @@ In this project, I'm using a database from Stanford's GloVe project. Each word i
 ### After we click on the news "Musicians to tackle US red tape"
 ![](./static/screenshot2.png)
 
-A web server that displays a list of recommended BBC articles on the side when you read an article. Once you click on any article suggested on the side, it will direct you to the recommended articles that are similar based on the contents.
+BBCRecommendation is a web application that displays a list of recommended BBC articles on the side when you read an article. Once you click on any article suggested on the side, it will direct you to the recommended articles that are similar based on the contents.
