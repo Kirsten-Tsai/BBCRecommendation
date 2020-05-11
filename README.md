@@ -12,7 +12,7 @@ In this project, I'm using a database from Stanford's GloVe project. Each word i
 ## A screenshot of how the system looks like:
 
 ### Homepage
-![](./static/screenshot1.png)
+![](./static/screenshot.png)
 
 ### After we click on the news "Musicians to tackle US red tape"
 ![](./static/screenshot2.png)
