@@ -3,7 +3,13 @@ import re
 import string
 import os
 import numpy as np
-import codecs   
+import codecs
+
+### QUESTIONS ###
+# how come "bbc doesn't need to be specified in the filename"
+# in server.py is this necessary? or is a already a returning a copy? show_article = a.copy()
+# ask terence about git commit -a. why -a? thats commits everything but sometimes i dont want to do that
+### QUESTIONS ###
 
 # From scikit learn that got words from:
 # http://ir.dcs.gla.ac.uk/resources/linguistic_utils/stop_words
@@ -50,10 +56,8 @@ ENGLISH_STOP_WORDS = frozenset([
     "within", "without", "would", "yet", "you", "your", "yours", "yourself",
     "yourselves"])
 
-vectorfile = "glove.6B.300d.txt"
-bbcpath = "bbc"
 
-def load_glove(filename) -> dict:
+def load_glove(filename):
     """
     Read all lines from the indicated file and return a dictionary
     mapping word:vector where vectors are of numpy `array` type.
@@ -65,28 +69,27 @@ def load_glove(filename) -> dict:
     and the remaining elements represent factor components. The length of the vector
     should not matter; read vectors of any length.
     """
-    with open(filename, "r") as f:
-        listofsentence = f.readlines()  
 
-    gloves = {}
-    for i in listofsentence:
+    d = {}
 
-        tmpList = i.strip().split(" ")
-        gloves[tmpList[0]] = np.array([float(_) for _ in tmpList[1:]])
-    return gloves
+    with open(filename,'r') as f:
+        for line in f:
+            ls_items = line.split(' ')
+            d[ls_items[0]] = np.array([float(i) for i in ls_items[1:]]) 
+
+    return d
 
 
-def filelist(root) -> list:
+def filelist(root):
     """Return a fully-qualified list of filenames under root directory"""
     allfiles = []
     for path, subdirs, files in os.walk(root):
         for name in files:
             allfiles.append(os.path.join(path, name))
-
-    allfiles = [path for path in allfiles if path[-4:] == ".txt"]
     return allfiles
 
-def get_text(filename) -> str:
+
+def get_text(filename):
     """
     Load and return the text of a text file, assuming latin-1 encoding as that
     is what the BBC corpus uses.  Use codecs.open() function not open().
@@ -97,7 +100,7 @@ def get_text(filename) -> str:
     return s
 
 
-def words(text) -> str:
+def words(text):
     """
     Given a string, return a list of words normalized as follows.
     Split the string to make words first by using regex compile() function
@@ -108,30 +111,14 @@ def words(text) -> str:
     Lowercase all words
     Remove English stop words
     """
-    regex = re.compile('[' + re.escape(string.punctuation) + '0-9\\r\\t\\n]')
-    nopunct = regex.sub(" ", text)  # delete stuff but leave at least a space to avoid clumping together
-    words = nopunct.split(" ")
-    words = [w for w in words if len(w) > 2]  # ignore a, an, to, at, be, ...
-    words = [w.lower() for w in words]
-    words = [i for i in words if i not in list(ENGLISH_STOP_WORDS)]
+
+    text = text.lower()
+    text = re.sub('[' + string.punctuation + '0-9\\r\\t\\n]', ' ', text)
+    words = text.split(' ')
+    words = [w for w in words if len(w) >= 3]  # ignore a, an, to, at, be, ...
+    words = [w for w in words if w not in ENGLISH_STOP_WORDS]
 
     return words
-
-def doc2vec(text, gloves):
-    """
-    Return the word vector centroid for the text. Sum the word vectors
-    for each word and then divide by the number of words. Ignore words
-    not in gloves.
-    """
-    #need to change the size 50 -> 300
-    wordVec = np.zeros(300)
-    words = len(text)
-    for word in text:
-        try:
-            wordVec += gloves[word]
-        except KeyError:
-            words -= 1
-    return wordVec / words
 
 
 def load_articles(articles_dirname, gloves):
@@ -146,25 +133,43 @@ def load_articles(articles_dirname, gloves):
     The filename is stripped of the prefix of the articles_dirname pulled in as
     script parameter sys.argv[2]. E.g., filename will be "business/223.txt"
     """
-    records = []
-    allfiles = filelist(articles_dirname)
-    for i in allfiles:
-        newi = i.split("/")
-        newpath = "/".join(newi[1:])
+    ls_articles = []
+    ls_txt_files = [f for f in filelist(articles_dirname) if f[-4:]=='.txt']
 
-        txt = get_text(i)
-        content = txt.split("\n")
+    for file in ls_txt_files:
 
-        topic = words(content[0])
-        topic = " ".join(topic)
-        content = words(" ".join(content[1:]))
-        content = " ".join(content)
+        s = get_text(file)
 
-        txt = words(get_text(i)) #txt already compiled
-        #vector without the title
-        wordVec = doc2vec(content, gloves)
-        records.append([newpath, topic, content, wordVec])
-    return records
+        # get title and article text
+        title = ''
+        article_text_minus_title = ''
+
+        ls_lines = [l for l in s.split('\n') if l != '']
+        title = ls_lines[0]
+        article_text_minus_title = '<p>'.join(ls_lines[1:])
+
+        # compute wordvec centroid
+        centroid_vec = doc2vec(article_text_minus_title, gloves)
+
+        ls_articles.append([file.replace(articles_dirname+'/','') , title, article_text_minus_title, centroid_vec])
+
+    return ls_articles
+
+
+def doc2vec(text, gloves):
+    """
+    Return the word vector centroid for the text. Sum the word vectors
+    for each word and then divide by the number of words. Ignore words
+    not in gloves.
+    """
+
+    ls_words = words(text)
+    ls_words_in_glove = [w for w in ls_words if w in gloves.keys()]
+
+    centroid_vec = np.sum([gloves[word] for word in ls_words_in_glove],axis=0) / len(ls_words_in_glove)
+
+    return centroid_vec
+
 
 
 def distances(article, articles):
@@ -173,13 +178,14 @@ def distances(article, articles):
     a list of (distance, a) tuples for all a in articles. The article is one
     of the elements (tuple) from the articles list.
     """
-    n = [record[0] for record in articles].index(article)
-    disList = []
-    for i in range(len(articles)):
-        dis = np.linalg.norm(articles[i][-1] - articles[n][-1])
-        disList.append((dis, articles[i][0]))
 
-    return disList
+    ls_distances = []
+
+    for a in articles:
+        if a[0] != article[0]:
+            ls_distances.append((np.linalg.norm(article[3]-a[3]), a))
+
+    return ls_distances
 
 def recommended(article, articles, n):
     """
@@ -188,28 +194,23 @@ def recommended(article, articles, n):
     (tuple) from the articles list.
     """
 
-    disArr = distances(article, articles)
-    recommend = []
-    disSort = sorted(disArr, key = lambda disArr: disArr[0], reverse = False)
-    disSort = disSort[:n]
-    for disTuple in disSort:
-        n = [record[0] for record in articles].index(disTuple[1])
-        recommend.append(articles[n])
-    return recommend
+    ls_distances = distances(article, articles)
+    ls_distances = sorted(ls_distances, key=lambda x: x[0])
 
+    return [t[1] for t in ls_distances[:n]]
 
+# testing if it works
 if __name__ == '__main__':
 
-    try:
-        glove_filename = sys.argv[1]
-        articles_dirname = sys.argv[2]
-    except:
-        glove_filename = vectorfile
-        articles_dirname = bbcpath
+    glove_filename = sys.argv[1]
+    articles_dirname = sys.argv[2]
 
-    gloves = load_glove(glove_filename) 
+    gloves = load_glove(glove_filename)
     articles = load_articles(articles_dirname, gloves)
-    print(articles[0:2])
-    recommend = recommended("sport/284.txt", articles, 5)
-    print("RECOMMENDATION:::: ", articles[0:2])
+    
+    print(gloves['dog'])
+    print(articles[0])
 
+    doc = articles[0]
+    seealso = recommended(doc, articles, 5)
+    print(seealso)
